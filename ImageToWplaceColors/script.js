@@ -28,14 +28,14 @@ controls.style.margin = '8px 0';
 
 // Labels + inputs
 const wLabel = document.createElement('label');
-wLabel.textContent = 'Ancho:';
+wLabel.textContent = 'width:';
 const widthInput = document.createElement('input');
 widthInput.type = 'number';
 widthInput.min = '1';
 widthInput.style.width = '80px';
 
 const hLabel = document.createElement('label');
-hLabel.textContent = 'Alto:';
+hLabel.textContent = 'height:';
 const heightInput = document.createElement('input');
 heightInput.type = 'number';
 heightInput.min = '1';
