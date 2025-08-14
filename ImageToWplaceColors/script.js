@@ -9,14 +9,14 @@ const colorList = [
   [255, 175, 115]
 ];
 
-// Buscar color más cercano
+// Función para encontrar el color más cercano en la paleta
 function nearestColor(color) {
   let minDiff = Infinity;
   let nearest = colorList[0];
   for (let c of colorList) {
-    const diff = (Math.abs(color[0] - c[0]) +
-                  Math.abs(color[1] - c[1]) +
-                  Math.abs(color[2] - c[2])) / 3;
+    const diff = Math.pow(color[0] - c[0], 2) +
+                 Math.pow(color[1] - c[1], 2) +
+                 Math.pow(color[2] - c[2], 2);
     if (diff < minDiff) {
       minDiff = diff;
       nearest = c;
@@ -25,60 +25,100 @@ function nearestColor(color) {
   return nearest;
 }
 
-// Adaptar la imagen al usar la paleta
+// Adaptar la imagen usando Floyd–Steinberg dithering
 function adaptImage(img) {
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
   canvas.width = img.width;
   canvas.height = img.height;
   ctx.drawImage(img, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
+  
+  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let data = imageData.data;
+  const w = canvas.width;
+  const h = canvas.height;
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i+1], b = data[i+2];
-    const [nr, ng, nb] = nearestColor([r, g, b]);
-    data[i] = nr;
-    data[i+1] = ng;
-    data[i+2] = nb;
+  // Convertimos a matriz para manipular más fácilmente
+  let pixels = [];
+  for (let y = 0; y < h; y++) {
+    let row = [];
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      row.push([data[i], data[i+1], data[i+2]]);
+    }
+    pixels.push(row);
+  }
+
+  // Aplicar Floyd–Steinberg
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let oldPixel = pixels[y][x];
+      let newPixel = nearestColor(oldPixel);
+      pixels[y][x] = newPixel;
+
+      let err = [
+        oldPixel[0] - newPixel[0],
+        oldPixel[1] - newPixel[1],
+        oldPixel[2] - newPixel[2]
+      ];
+
+      // Distribución de error
+      if (x + 1 < w) {
+        pixels[y][x+1] = pixels[y][x+1].map((v, i) => v + err[i] * 7 / 16);
+      }
+      if (y + 1 < h && x > 0) {
+        pixels[y+1][x-1] = pixels[y+1][x-1].map((v, i) => v + err[i] * 3 / 16);
+      }
+      if (y + 1 < h) {
+        pixels[y+1][x] = pixels[y+1][x].map((v, i) => v + err[i] * 5 / 16);
+      }
+      if (y + 1 < h && x + 1 < w) {
+        pixels[y+1][x+1] = pixels[y+1][x+1].map((v, i) => v + err[i] * 1 / 16);
+      }
+    }
+  }
+
+  // Pasar la matriz de nuevo al ImageData
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      data[i] = Math.min(255, Math.max(0, Math.round(pixels[y][x][0])));
+      data[i+1] = Math.min(255, Math.max(0, Math.round(pixels[y][x][1])));
+      data[i+2] = Math.min(255, Math.max(0, Math.round(pixels[y][x][2])));
+    }
   }
 
   ctx.putImageData(imageData, 0, 0);
-
-  // mostrar el canvas
+  canvas.style.width = "75%";
   canvas.style.height = "auto";
-  canvas.style.width = "75%"; // aplicar aquí también por si quieres forzarlo
 }
 
-
-
-// Manejar carga de archivo
+// Cargar imagen
 document.getElementById('fileInput').addEventListener('change', function(e) {
   const file = e.target.files[0];
   if (!file) return;
   const img = new Image();
   img.onload = () => {
-    adaptImage(img); // procesa y pinta en tamaño real
-    resizeCanvasForDisplay(); // escala solo visualmente
+    adaptImage(img);
+    resizeCanvasForDisplay();
   };
   img.src = URL.createObjectURL(file);
 });
 
-// Escalar canvas visualmente pero mantener resolución interna
+// Escalar canvas visualmente
 function resizeCanvasForDisplay() {
   const canvas = document.getElementById('canvas');
-  canvas.style.width = "75%";  // siempre 50% del ancho de la página o contenedor
-  canvas.style.height = "auto"; // mantiene proporción
+  canvas.style.width = "75%";
+  canvas.style.height = "auto";
 }
 
-// Descargar imagen en tamaño original
+// Descargar imagen
 function downloadImage() {
   const canvas = document.getElementById('canvas');
   const link = document.createElement('a');
   link.download = 'output_image.png';
-  link.href = canvas.toDataURL('image/png'); // esto usa la resolución real
+  link.href = canvas.toDataURL('image/png');
   link.click();
 }
 
-// Conectar el botón de descarga
 document.getElementById('downloadBtn').addEventListener('click', downloadImage);
