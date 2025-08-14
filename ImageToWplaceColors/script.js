@@ -1,4 +1,70 @@
-// Paleta de colores
+// ------------------------
+// Referencias del DOM base
+// ------------------------
+const fileInput = document.getElementById('fileInput');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const downloadBtn = document.getElementById('downloadBtn');
+
+// Al inicio, canvas vacío
+canvas.width = 0;
+canvas.height = 0;
+canvas.style.width = '0px';
+canvas.style.height = '0px';
+
+
+// ------------------------
+// Controles creados dinámicamente
+// ------------------------
+const section2 = document.querySelector('.section_2') || canvas.parentElement;
+
+// Contenedor de controles
+const controls = document.createElement('div');
+controls.style.display = 'flex';
+controls.style.alignItems = 'center';
+controls.style.gap = '10px';
+controls.style.flexWrap = 'wrap';
+controls.style.margin = '8px 0';
+
+// Labels + inputs
+const wLabel = document.createElement('label');
+wLabel.textContent = 'Ancho:';
+const widthInput = document.createElement('input');
+widthInput.type = 'number';
+widthInput.min = '1';
+widthInput.style.width = '80px';
+
+const hLabel = document.createElement('label');
+hLabel.textContent = 'Alto:';
+const heightInput = document.createElement('input');
+heightInput.type = 'number';
+heightInput.min = '1';
+heightInput.style.width = '80px';
+
+controls.appendChild(wLabel);
+controls.appendChild(widthInput);
+controls.appendChild(hLabel);
+controls.appendChild(heightInput);
+
+// Texto info (resolución y píxeles)
+const infoText = document.createElement('p');
+infoText.style.margin = '4px 0 10px';
+infoText.style.fontWeight = 'bold';
+infoText.style.color = 'black';
+
+// Insertar controles e info encima del canvas
+section2.insertBefore(controls, canvas);
+section2.insertBefore(infoText, canvas);
+
+// ------------------------
+// Variables de estado
+// ------------------------
+let originalImage = null;
+let aspectRatio = 1;
+
+// ------------------------
+// Paleta WPlace
+// ------------------------
 const colorList = [
   [0, 0, 0], [60, 60, 60], [120, 120, 120], [210, 210, 210], [255, 255, 255],
   [108, 0, 15], [255, 0, 0], [255, 119, 0], [255, 166, 0], [255, 220, 60],
@@ -9,116 +75,193 @@ const colorList = [
   [255, 175, 115]
 ];
 
-// Función para encontrar el color más cercano en la paleta
-function nearestColor(color) {
-  let minDiff = Infinity;
-  let nearest = colorList[0];
-  for (let c of colorList) {
-    const diff = Math.pow(color[0] - c[0], 2) +
-                 Math.pow(color[1] - c[1], 2) +
-                 Math.pow(color[2] - c[2], 2);
-    if (diff < minDiff) {
-      minDiff = diff;
-      nearest = c;
+// ------------------------
+// Utilidades
+// ------------------------
+function nearestColor(rgb) {
+  let best = colorList[0];
+  let bestDist = Infinity;
+  const r = rgb[0], g = rgb[1], b = rgb[2];
+  for (let i = 0; i < colorList.length; i++) {
+    const c = colorList[i];
+    const dr = r - c[0], dg = g - c[1], db = b - c[2];
+    const d = dr*dr + dg*dg + db*db; // distancia euclídea^2
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
     }
   }
-  return nearest;
+  return best;
 }
 
-// Adaptar la imagen usando Floyd–Steinberg dithering
-function adaptImage(img) {
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  canvas.width = img.width;
-  canvas.height = img.height;
-  ctx.drawImage(img, 0, 0);
-  
-  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  let data = imageData.data;
-  const w = canvas.width;
-  const h = canvas.height;
-
-  // Convertimos a matriz para manipular más fácilmente
-  let pixels = [];
-  for (let y = 0; y < h; y++) {
-    let row = [];
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      row.push([data[i], data[i+1], data[i+2]]);
-    }
-    pixels.push(row);
-  }
-
-  // Aplicar Floyd–Steinberg
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let oldPixel = pixels[y][x];
-      let newPixel = nearestColor(oldPixel);
-      pixels[y][x] = newPixel;
-
-      let err = [
-        oldPixel[0] - newPixel[0],
-        oldPixel[1] - newPixel[1],
-        oldPixel[2] - newPixel[2]
-      ];
-
-      // Distribución de error
-      if (x + 1 < w) {
-        pixels[y][x+1] = pixels[y][x+1].map((v, i) => v + err[i] * 7 / 16);
-      }
-      if (y + 1 < h && x > 0) {
-        pixels[y+1][x-1] = pixels[y+1][x-1].map((v, i) => v + err[i] * 3 / 16);
-      }
-      if (y + 1 < h) {
-        pixels[y+1][x] = pixels[y+1][x].map((v, i) => v + err[i] * 5 / 16);
-      }
-      if (y + 1 < h && x + 1 < w) {
-        pixels[y+1][x+1] = pixels[y+1][x+1].map((v, i) => v + err[i] * 1 / 16);
-      }
-    }
-  }
-
-  // Pasar la matriz de nuevo al ImageData
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      data[i] = Math.min(255, Math.max(0, Math.round(pixels[y][x][0])));
-      data[i+1] = Math.min(255, Math.max(0, Math.round(pixels[y][x][1])));
-      data[i+2] = Math.min(255, Math.max(0, Math.round(pixels[y][x][2])));
-    }
-  }
-
-  ctx.putImageData(imageData, 0, 0);
-  canvas.style.width = "75%";
-  canvas.style.height = "auto";
+function clamp(v) {
+  return v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
-// Cargar imagen
-document.getElementById('fileInput').addEventListener('change', function(e) {
+function updateInfo(w, h) {
+  infoText.textContent = `${w} × ${h} — ${w * h} píxeles`;
+}
+
+// ------------------------
+// Carga de imagen
+// ------------------------
+fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
+
   const img = new Image();
   img.onload = () => {
-    adaptImage(img);
-    resizeCanvasForDisplay();
+    originalImage = img;
+    aspectRatio = img.width / img.height;
+
+    // Inicializar inputs con dimensiones originales
+    widthInput.value = img.width;
+    heightInput.value = img.height;
+
+    updateInfo(img.width, img.height);
+    drawPreview(); // vista previa instantánea (sin dithering)
   };
   img.src = URL.createObjectURL(file);
 });
 
-// Escalar canvas visualmente
-function resizeCanvasForDisplay() {
-  const canvas = document.getElementById('canvas');
-  canvas.style.width = "75%";
-  canvas.style.height = "auto";
+// ------------------------
+// Vista previa instantánea
+// ------------------------
+function drawPreview() {
+  if (!originalImage) return;
+
+  const w = Math.max(1, parseInt(widthInput.value) || 1);
+  const h = Math.max(1, parseInt(heightInput.value) || 1);
+
+  // Canvas temporal reducido
+  const low = document.createElement('canvas');
+  low.width = w;
+  low.height = h;
+  const lctx = low.getContext('2d');
+  lctx.imageSmoothingEnabled = false;
+  lctx.drawImage(originalImage, 0, 0, w, h);
+
+  // Aplicar dithering
+  let imgData = lctx.getImageData(0, 0, w, h);
+  imgData = floydSteinbergWithPalette(imgData);
+  lctx.putImageData(imgData, 0, 0);
+
+  // Canvas visible
+  ctx.imageSmoothingEnabled = false;
+  canvas.width = w;
+  canvas.height = h;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(low, 0, 0, w, h);
+
+  // Ajustar tamaño visual ahora que hay imagen
+  canvas.style.width = '50vw';
+  canvas.style.height = 'auto';
+
+  updateInfo(w, h);
 }
 
-// Descargar imagen
-function downloadImage() {
-  const canvas = document.getElementById('canvas');
+
+// Mantener proporciones al cambiar ancho
+widthInput.addEventListener('input', () => {
+  if (!originalImage) return;
+  const newW = Math.max(1, parseInt(widthInput.value) || 1);
+  const newH = Math.max(1, Math.round(newW / aspectRatio));
+  heightInput.value = newH;
+  drawPreview();
+});
+
+// Mantener proporciones al cambiar alto
+heightInput.addEventListener('input', () => {
+  if (!originalImage) return;
+  const newH = Math.max(1, parseInt(heightInput.value) || 1);
+  const newW = Math.max(1, Math.round(newH * aspectRatio));
+  widthInput.value = newW;
+  drawPreview();
+});
+
+// ------------------------
+// Dithering con paleta (al descargar)
+// ------------------------
+function floydSteinbergWithPalette(imageData) {
+  const { data, width: w, height: h } = imageData;
+
+  // Trabajamos sobre un buffer float para precisión
+  const buf = new Float32Array(data.length);
+  for (let i = 0; i < data.length; i++) buf[i] = data[i];
+
+  // Recorremos y distribuimos el error
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+
+      const oldR = buf[idx];
+      const oldG = buf[idx + 1];
+      const oldB = buf[idx + 2];
+
+      const [nr, ng, nb] = nearestColor([oldR, oldG, oldB]);
+      buf[idx]     = nr;
+      buf[idx + 1] = ng;
+      buf[idx + 2] = nb;
+
+      const errR = oldR - nr;
+      const errG = oldG - ng;
+      const errB = oldB - nb;
+
+      // (x+1, y) 7/16
+      distribute(x + 1, y,   errR, errG, errB, 7 / 16);
+      // (x-1, y+1) 3/16
+      distribute(x - 1, y + 1, errR, errG, errB, 3 / 16);
+      // (x, y+1) 5/16
+      distribute(x,     y + 1, errR, errG, errB, 5 / 16);
+      // (x+1, y+1) 1/16
+      distribute(x + 1, y + 1, errR, errG, errB, 1 / 16);
+    }
+  }
+
+  // Copiar de vuelta con clamp
+  for (let i = 0; i < data.length; i += 4) {
+    data[i]     = clamp(Math.round(buf[i]));
+    data[i + 1] = clamp(Math.round(buf[i + 1]));
+    data[i + 2] = clamp(Math.round(buf[i + 2]));
+    // alpha tal cual
+  }
+
+  function distribute(x, y, er, eg, eb, wgt) {
+    if (x < 0 || x >= w || y < 0 || y >= h) return;
+    const j = (y * w + x) * 4;
+    buf[j]     += er * wgt;
+    buf[j + 1] += eg * wgt;
+    buf[j + 2] += eb * wgt;
+  }
+
+  return imageData;
+}
+
+// ------------------------
+// Descargar con dithering
+// ------------------------
+downloadBtn.addEventListener('click', () => {
+  if (!originalImage) return;
+
+  const w = Math.max(1, parseInt(widthInput.value) || 1);
+  const h = Math.max(1, parseInt(heightInput.value) || 1);
+
+  // Canvas a resolución final (sin suavizado)
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(originalImage, 0, 0, w, h);
+
+  // Dithering con paleta WPlace
+  let imgData = octx.getImageData(0, 0, w, h);
+  imgData = floydSteinbergWithPalette(imgData);
+  octx.putImageData(imgData, 0, 0);
+
+  // Descargar PNG
   const link = document.createElement('a');
-  link.download = 'output_image.png';
-  link.href = canvas.toDataURL('image/png');
+  link.download = 'pixel_art.png';
+  link.href = out.toDataURL('image/png');
   link.click();
-}
-
-document.getElementById('downloadBtn').addEventListener('click', downloadImage);
+});
